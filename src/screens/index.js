@@ -15,7 +15,7 @@ import {
 import { bookmarks, categories, trendingTags, worldNewsToday } from "../data/content";
 import { radius, spacing, typography } from "../theme/tokens";
 import { SectionTitle } from "../components/Shell";
-import { fetchJSON } from "../config/api";
+import { fetchBackendNewsFeed } from "../config/api";
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -23,21 +23,11 @@ const getScreenProfile = (width, height) => {
   const shortest = Math.min(width, height);
   const longest = Math.max(width, height);
 
-  if (width >= 1200) {
-    return { key: "desktop", pagePad: 28, maxContentWidth: 860, titleScale: 1.08, summaryScale: 1.04, cardGap: 20 };
-  }
-  if (width >= 900 || shortest >= 700) {
-    return { key: "tablet", pagePad: 24, maxContentWidth: 760, titleScale: 1.02, summaryScale: 1.02, cardGap: 18 };
-  }
-  if (width >= 600 || longest >= 980) {
-    return { key: "phablet", pagePad: 20, maxContentWidth: 620, titleScale: 1, summaryScale: 1, cardGap: 16 };
-  }
-  if (width >= 414) {
-    return { key: "large-phone", pagePad: 18, maxContentWidth: 560, titleScale: 0.98, summaryScale: 0.98, cardGap: 14 };
-  }
-  if (width >= 375) {
-    return { key: "regular-phone", pagePad: 16, maxContentWidth: 520, titleScale: 0.95, summaryScale: 0.95, cardGap: 12 };
-  }
+  if (width >= 1200) return { key: "desktop", pagePad: 28, maxContentWidth: 860, titleScale: 1.08, summaryScale: 1.04, cardGap: 20 };
+  if (width >= 900 || shortest >= 700) return { key: "tablet", pagePad: 24, maxContentWidth: 760, titleScale: 1.02, summaryScale: 1.02, cardGap: 18 };
+  if (width >= 600 || longest >= 980) return { key: "phablet", pagePad: 20, maxContentWidth: 620, titleScale: 1, summaryScale: 1, cardGap: 16 };
+  if (width >= 414) return { key: "large-phone", pagePad: 18, maxContentWidth: 560, titleScale: 0.98, summaryScale: 0.98, cardGap: 14 };
+  if (width >= 375) return { key: "regular-phone", pagePad: 16, maxContentWidth: 520, titleScale: 0.95, summaryScale: 0.95, cardGap: 12 };
   return { key: "small-phone", pagePad: 14, maxContentWidth: 480, titleScale: 0.9, summaryScale: 0.9, cardGap: 10 };
 };
 
@@ -62,16 +52,48 @@ export function FeedScreen({ theme }) {
   const { width, height } = useWindowDimensions();
   const profile = getScreenProfile(width, height);
   const typeScale = getTypeScale(profile.key);
-    const [index, setIndex] = useState(0);
-  const [articleItems, setArticleItems] = useState(worldNewsToday);
+  const [index, setIndex] = useState(0);
+  const [articleItems, setArticleItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [backendError, setBackendError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState("");
+  const wheelLockRef = useRef(0);
   const panX = useRef(new Animated.Value(0)).current;
   const panY = useRef(new Animated.Value(0)).current;
 
   const activeItem = articleItems[index];
-  const fallbackImage =
-    "https://lh3.googleusercontent.com/aida-public/AB6AXuD3yLE4Y7fLjo2F7D1pdazq_M_OjRaQuoHUGoo_YvHxzBQtDDBVUG-FxF51Mxn012UserTRxAMz8-WKa-h-Fq80NoT8DRQpqvmyzIPv3Qr9UqbEn5T43awxzD8b5ALLuwp_yRgCt164tsJyul546mTtUWFHgfQXfl54i-4GELcRpI9BUJIab-nFCA1aKyyrU9963CIzNZ3CCgHYdZP4d_Ea5wDyeRl0iWMGqWSzblN3n0sASV2-fnKqpqc8Y8uhlNYTxkh-BMRO-4ss";
+  const fallbackImage = "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1200&q=80";
 
-  const viewportSafeHeight = Math.max(420, height - 64 - 64 - profile.cardGap * 2);
+  const loadArticles = async () => {
+    setLoading(true);
+    setBackendError("");
+    try {
+      const data = await fetchBackendNewsFeed();
+      if (Array.isArray(data) && data.length > 0) {
+        setArticleItems(data);
+        setIndex(0);
+        setLastUpdated(new Date().toLocaleTimeString());
+      } else {
+        setArticleItems(worldNewsToday);
+        setIndex(0);
+        setLastUpdated("Template mode");
+        setBackendError("Backend connected, but no articles found. Showing template articles.");
+      }
+    } catch (_err) {
+      setArticleItems(worldNewsToday);
+      setIndex(0);
+      setLastUpdated("Template mode");
+      setBackendError("Backend connection failed. Showing template articles.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadArticles();
+  }, []);
+
+  const viewportSafeHeight = Math.max(420, height - 64 - 64 - profile.cardGap * 2 - 42);
   const cardWidth = clamp(Math.min(width - profile.pagePad * 2, profile.maxContentWidth), 280, 560);
   const cardHeight = clamp(viewportSafeHeight, 480, 760);
   const imageHeight = clamp(cardHeight * 0.33, 180, 280);
@@ -83,33 +105,12 @@ export function FeedScreen({ theme }) {
   const titleLines = compactCard ? 3 : 4;
   const summaryLines = compactCard ? 5 : 7;
 
-  const xInfluence = panX.interpolate({
-    inputRange: [-width, 0, width],
-    outputRange: [0.2, 0, 0.2],
-    extrapolate: "clamp"
-  });
-  const yInfluence = panY.interpolate({
-    inputRange: [-height, 0, height],
-    outputRange: [0.2, 0, 0.2],
-    extrapolate: "clamp"
-  });
+  const xInfluence = panX.interpolate({ inputRange: [-width, 0, width], outputRange: [0.2, 0, 0.2], extrapolate: "clamp" });
+  const yInfluence = panY.interpolate({ inputRange: [-height, 0, height], outputRange: [0.2, 0, 0.2], extrapolate: "clamp" });
   const dragInfluence = Animated.add(xInfluence, yInfluence);
-  const activeOpacity = dragInfluence.interpolate({
-    inputRange: [0, 0.4],
-    outputRange: [1, 0.6],
-    extrapolate: "clamp"
-  });
-  const activeScale = dragInfluence.interpolate({
-    inputRange: [0, 0.4],
-    outputRange: [1, 0.93],
-    extrapolate: "clamp"
-  });
-
-  const activeRotate = panX.interpolate({
-    inputRange: [-width, 0, width],
-    outputRange: ["-10deg", "0deg", "10deg"],
-    extrapolate: "clamp"
-  });
+  const activeOpacity = dragInfluence.interpolate({ inputRange: [0, 0.4], outputRange: [1, 0.6], extrapolate: "clamp" });
+  const activeScale = dragInfluence.interpolate({ inputRange: [0, 0.4], outputRange: [1, 0.93], extrapolate: "clamp" });
+  const activeRotate = panX.interpolate({ inputRange: [-width, 0, width], outputRange: ["-10deg", "0deg", "10deg"], extrapolate: "clamp" });
 
   const panResponder = useMemo(
     () =>
@@ -183,27 +184,75 @@ export function FeedScreen({ theme }) {
     [articleItems.length, height, index, panX, panY, width]
   );
 
+  const animateToIndex = (targetIndex, direction = "next", axis = "vertical") => {
+    if (targetIndex < 0 || targetIndex > articleItems.length - 1 || targetIndex === index) return;
+    const toY = axis === "vertical" ? (direction === "next" ? -height * 0.9 : height * 0.9) : 0;
+    const toX = axis === "horizontal" ? (direction === "next" ? -width * 0.9 : width * 0.9) : 0;
+
+    Animated.parallel([
+      Animated.timing(panX, { toValue: toX, duration: 220, useNativeDriver: true }),
+      Animated.timing(panY, { toValue: toY, duration: 220, useNativeDriver: true })
+    ]).start(() => {
+      setIndex(targetIndex);
+      panX.setValue(-toX * 0.08);
+      panY.setValue(-toY * 0.08);
+      Animated.parallel([
+        Animated.spring(panX, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 5 }),
+        Animated.spring(panY, { toValue: 0, useNativeDriver: true, speed: 18, bounciness: 5 })
+      ]).start();
+    });
+  };
+
   useEffect(() => {
-    const loadArticles = async () => {
-      try {
-        const data = await fetchJSON("/articles?limit=100");
-        if (Array.isArray(data) && data.length > 0) {
-          setArticleItems(data);
-          setIndex(0);
-        }
-      } catch (_err) {
-        setArticleItems(worldNewsToday);
+    if (typeof window === "undefined") return undefined;
+
+    const onWheel = (event) => {
+      if (!articleItems.length) return;
+      const now = Date.now();
+      if (now - wheelLockRef.current < 280) return;
+      const absX = Math.abs(event.deltaX || 0);
+      const absY = Math.abs(event.deltaY || 0);
+      if (absX < 18 && absY < 18) return;
+      wheelLockRef.current = now;
+
+      if (absY >= absX) {
+        if (event.deltaY > 0) animateToIndex(Math.min(articleItems.length - 1, index + 1), "next", "vertical");
+        else animateToIndex(Math.max(0, index - 1), "prev", "vertical");
+      } else {
+        if (event.deltaX > 0) animateToIndex(Math.min(articleItems.length - 1, index + 1), "next", "horizontal");
+        else animateToIndex(Math.max(0, index - 1), "prev", "horizontal");
       }
     };
-    loadArticles();
-  }, []);
+
+    window.addEventListener("wheel", onWheel, { passive: true });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, [articleItems.length, height, index, width]);
+
+  if (loading) {
+    return (
+      <View style={[styles.feedRoot, { backgroundColor: theme.bg, justifyContent: "center", alignItems: "center" }]}>
+        <Text style={[styles.meta, { color: theme.textMuted }]}>Loading backend news...</Text>
+      </View>
+    );
+  }
 
   if (!activeItem) {
-    return <View style={[styles.feedRoot, { backgroundColor: theme.bg }]} />;
+    return (
+      <View style={[styles.feedRoot, { backgroundColor: theme.bg, justifyContent: "center", alignItems: "center", padding: spacing.lg }]}>
+        <Text style={[styles.body, { color: theme.text, textAlign: "center" }]}>{backendError || "No data available."}</Text>
+        <Pressable style={[styles.refreshBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]} onPress={loadArticles}>
+          <Text style={[styles.label, { color: theme.primary }]}>Retry backend sync</Text>
+        </Pressable>
+      </View>
+    );
   }
 
   return (
     <View style={[styles.feedRoot, { backgroundColor: theme.bg }]}>
+      <View style={[styles.backendBar, { borderBottomColor: theme.border, backgroundColor: theme.surface }]}> 
+        <Text style={[styles.meta, { color: theme.textMuted }]}>Live Backend • {articleItems.length} Articles {lastUpdated ? `• Updated ${lastUpdated}` : ""}</Text>
+        <Pressable onPress={loadArticles}><Text style={[styles.label, { color: theme.primary }]}>Refresh</Text></Pressable>
+      </View>
       <View style={styles.pageWrap} {...panResponder.panHandlers}>
         <Animated.View
           style={[
@@ -227,15 +276,8 @@ export function FeedScreen({ theme }) {
 
           <View style={styles.worldContent}>
             <View>
-              <Text numberOfLines={titleLines} style={[styles.worldTitle, { color: theme.text, fontSize: titleSize, lineHeight: titleLine }]}>
-                {activeItem.title}
-              </Text>
-              <Text
-                numberOfLines={summaryLines}
-                style={[styles.worldSummary, { color: theme.textMuted, fontSize: summarySize, lineHeight: summaryLine }]}
-              >
-                {activeItem.summary}
-              </Text>
+              <Text numberOfLines={titleLines} style={[styles.worldTitle, { color: theme.text, fontSize: titleSize, lineHeight: titleLine }]}>{activeItem.title}</Text>
+              <Text numberOfLines={summaryLines} style={[styles.worldSummary, { color: theme.textMuted, fontSize: summarySize, lineHeight: summaryLine }]}>{activeItem.summary}</Text>
             </View>
 
             <View style={styles.worldFooter}>
@@ -255,51 +297,50 @@ export function CategoriesScreen({ theme }) {
   const { width, height } = useWindowDimensions();
   const profile = getScreenProfile(width, height);
   const typeScale = getTypeScale(profile.key);
-  const [categoryItems, setCategoryItems] = useState(categories);
+  const [articleItems, setArticleItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const gridColumns = width >= 1200 ? 4 : width >= 900 ? 3 : 2;
   const cardWidthPercent = gridColumns === 4 ? "23.5%" : gridColumns === 3 ? "31.5%" : "48%";
   const categoryFontSize = clamp(typeScale.cardLabel - 3, 16, 22);
 
   useEffect(() => {
-    const loadCategories = async () => {
+    const load = async () => {
+      setLoading(true);
       try {
-        const data = await fetchJSON("/categories");
-        if (Array.isArray(data) && data.length > 0) setCategoryItems(data);
-      } catch (_err) {
-        setCategoryItems(categories);
+        const data = await fetchBackendNewsFeed();
+        setArticleItems(Array.isArray(data) ? data : []);
+      } finally {
+        setLoading(false);
       }
     };
-    loadCategories();
+    load();
   }, []);
 
+  const categoryCounts = useMemo(() => {
+    const map = new Map();
+    articleItems.forEach((item) => {
+      const key = item.category || "Uncategorized";
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    const fromBackend = Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+    if (fromBackend.length) return fromBackend;
+    return categories.map((name) => ({ name, count: 0 }));
+  }, [articleItems]);
+
   return (
-    <ScrollView contentContainerStyle={[styles.page, { backgroundColor: theme.bg, paddingHorizontal: profile.pagePad }]}>
+    <ScrollView contentContainerStyle={[styles.page, { backgroundColor: theme.bg, paddingHorizontal: profile.pagePad }]}> 
       <SectionTitle
         theme={theme}
         title="Global News Topics"
-        subtitle="Customize your global feed by selecting preferred categories."
+        subtitle={loading ? "Syncing from backend..." : "Categories generated from backend articles."}
         titleStyle={{ fontSize: typeScale.sectionTitle, lineHeight: typeScale.sectionTitle + 6 }}
         subtitleStyle={{ fontSize: typeScale.sectionSubtitle, lineHeight: typeScale.sectionSubtitle + 8 }}
       />
-      <View style={[styles.grid, { gap: Math.max(10, profile.cardGap - 2) }]}>
-        {categoryItems.map((item) => (
-          <Pressable
-            key={item}
-            style={[styles.card, { width: cardWidthPercent, backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
-          >
-            <Text
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              style={[
-                styles.h3,
-                {
-                  color: theme.text,
-                  fontSize: categoryFontSize,
-                  textAlign: "center"
-                }
-              ]}
-            >
-              {item}
+      <View style={[styles.grid, { gap: Math.max(10, profile.cardGap - 2) }]}> 
+        {categoryCounts.map((item) => (
+          <Pressable key={item.name} style={[styles.card, { width: cardWidthPercent, backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}> 
+            <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.h3, { color: theme.text, fontSize: categoryFontSize, textAlign: "center" }]}>
+              {item.name}{item.count ? ` (${item.count})` : ""}
             </Text>
           </Pressable>
         ))}
@@ -312,21 +353,50 @@ export function SearchScreen({ theme }) {
   const { width, height } = useWindowDimensions();
   const profile = getScreenProfile(width, height);
   const typeScale = getTypeScale(profile.key);
+  const [query, setQuery] = useState("");
+  const [articleItems, setArticleItems] = useState([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await fetchBackendNewsFeed();
+        setArticleItems(Array.isArray(data) ? data : []);
+      } catch (_err) {
+        setArticleItems([]);
+      }
+    };
+    load();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return articleItems.slice(0, 8);
+    return articleItems.filter((item) => item.title.toLowerCase().includes(q) || item.summary.toLowerCase().includes(q) || item.category.toLowerCase().includes(q));
+  }, [articleItems, query]);
+
   return (
-    <ScrollView contentContainerStyle={[styles.page, { backgroundColor: theme.bg, paddingHorizontal: profile.pagePad }]}>
+    <ScrollView contentContainerStyle={[styles.page, { backgroundColor: theme.bg, paddingHorizontal: profile.pagePad }]}> 
       <SectionTitle
         theme={theme}
         title="Search"
-        subtitle="Find news, topics, and regions."
+        subtitle="Find news, topics, and regions from backend data."
         titleStyle={{ fontSize: typeScale.sectionTitle, lineHeight: typeScale.sectionTitle + 6 }}
         subtitleStyle={{ fontSize: typeScale.sectionSubtitle, lineHeight: typeScale.sectionSubtitle + 8 }}
       />
       <TextInput
         placeholder="Search news..."
+        value={query}
+        onChangeText={setQuery}
         placeholderTextColor={theme.textMuted}
         style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}
       />
-      <Text style={[styles.h3, { color: theme.text, marginTop: spacing.lg, fontSize: typeScale.cardLabel }]}>Trending Globally</Text>
+      <Text style={[styles.h3, { color: theme.text, marginTop: spacing.lg, fontSize: typeScale.cardLabel }]}>Live Results</Text>
+      {filtered.map((item) => (
+        <Pressable key={`${item.id}-${item.title}`} onPress={() => Linking.openURL(item.url)} style={[styles.searchResult, { borderBottomColor: theme.border }]}> 
+          <Text numberOfLines={2} style={[styles.body, { color: theme.text, marginTop: 0 }]}>{item.title}</Text>
+          <Text style={[styles.meta, { color: theme.textMuted, marginTop: 2 }]}>{item.category} • {item.source}</Text>
+        </Pressable>
+      ))}
       <View style={styles.tags}>
         {trendingTags.map((tag) => (
           <View key={tag} style={[styles.tag, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}> 
@@ -343,7 +413,7 @@ export function BookmarksScreen({ theme }) {
   const profile = getScreenProfile(width, height);
   const typeScale = getTypeScale(profile.key);
   return (
-    <ScrollView contentContainerStyle={[styles.page, { backgroundColor: theme.bg, paddingHorizontal: profile.pagePad }]}>
+    <ScrollView contentContainerStyle={[styles.page, { backgroundColor: theme.bg, paddingHorizontal: profile.pagePad }]}> 
       <SectionTitle
         theme={theme}
         title="Saved Stories"
@@ -369,7 +439,7 @@ export function SettingsScreen({ theme, darkMode, onToggleTheme }) {
   const profile = getScreenProfile(width, height);
   const typeScale = getTypeScale(profile.key);
   return (
-    <ScrollView contentContainerStyle={[styles.page, { backgroundColor: theme.bg, paddingHorizontal: profile.pagePad }]}>
+    <ScrollView contentContainerStyle={[styles.page, { backgroundColor: theme.bg, paddingHorizontal: profile.pagePad }]}> 
       <SectionTitle
         theme={theme}
         title="Settings"
@@ -377,11 +447,11 @@ export function SettingsScreen({ theme, darkMode, onToggleTheme }) {
         titleStyle={{ fontSize: typeScale.sectionTitle, lineHeight: typeScale.sectionTitle + 6 }}
         subtitleStyle={{ fontSize: typeScale.sectionSubtitle, lineHeight: typeScale.sectionSubtitle + 8 }}
       />
-      <View style={[styles.settingsBlock, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+      <View style={[styles.settingsBlock, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}> 
         <SettingRow theme={theme} label="Account" value="Premium" typeScale={typeScale} />
         <SettingRow theme={theme} label="Notifications" value="Enabled" typeScale={typeScale} />
         <Pressable style={styles.settingRow} onPress={onToggleTheme}>
-          <Text style={[styles.body, { color: theme.text, fontSize: typeScale.body } ]}>Dark Mode</Text>
+          <Text style={[styles.body, { color: theme.text, fontSize: typeScale.body }]}>Dark Mode</Text>
           <Text style={[styles.meta, { color: theme.primary, fontSize: typeScale.meta }]}>{darkMode ? "ON" : "OFF"}</Text>
         </Pressable>
         <SettingRow theme={theme} label="Language" value="English (UK)" typeScale={typeScale} />
@@ -403,9 +473,7 @@ function SettingRow({ theme, label, value, typeScale }) {
 }
 
 const styles = StyleSheet.create({
-  feedRoot: {
-    flex: 1
-  },
+  feedRoot: { flex: 1 },
   pageWrap: {
     flex: 1,
     justifyContent: "center",
@@ -535,9 +603,24 @@ const styles = StyleSheet.create({
   worldFooter: {
     minHeight: 54,
     justifyContent: "flex-end"
+  },
+  backendBar: {
+    height: 42,
+    borderBottomWidth: 1,
+    paddingHorizontal: spacing.container,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  refreshBtn: {
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: spacing.md
+  },
+  searchResult: {
+    borderBottomWidth: 1,
+    paddingVertical: 10
   }
 });
-
-
-
-
