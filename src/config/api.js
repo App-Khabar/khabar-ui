@@ -64,7 +64,7 @@ const normalizeNews = (rows = [], category = "World") => {
       source: item.source_name || "Unknown Source",
       publishedAt: item.createdAt ? item.createdAt.slice(0, 10) : "",
       summary: item.paragraph || item.paragraph_en || item.summary || "",
-      url: firstLink || "https://example.com",
+      url: firstLink || "https://www.bbc.com/news",
       image: item.image_url || ""
     };
   });
