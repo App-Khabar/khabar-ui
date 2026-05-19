@@ -18,6 +18,8 @@ import { SectionTitle } from "../components/Shell";
 import { fetchBackendNewsFeed } from "../config/api";
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+const templateArticleUrl =
+  "https://www.ndtv.com/india-news/grounds-raised-are-unreasonable-umar-khalids-interim-bail-request-denied-11517297";
 const normalizeUrl = (value) => {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -55,6 +57,7 @@ const getTypeScale = (profileKey) => {
 };
 
 export function FeedScreen({ theme }) {
+  const isWeb = typeof window !== "undefined";
   const { width, height } = useWindowDimensions();
   const profile = getScreenProfile(width, height);
   const typeScale = getTypeScale(profile.key);
@@ -64,6 +67,7 @@ export function FeedScreen({ theme }) {
   const [apiError, setApiError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
   const wheelLockRef = useRef(0);
+  const linkPressRef = useRef(false);
   const panX = useRef(new Animated.Value(0)).current;
   const panY = useRef(new Animated.Value(0)).current;
 
@@ -109,6 +113,16 @@ export function FeedScreen({ theme }) {
     loadArticles();
   }, []);
 
+  useEffect(() => {
+    if (!Array.isArray(articleItems) || articleItems.length === 0) return;
+    articleItems.slice(0, 20).forEach((item) => {
+      const uri = item?.image ? String(item.image) : "";
+      if (uri) {
+        Image.prefetch(uri).catch(() => {});
+      }
+    });
+  }, [articleItems]);
+
   const viewportSafeHeight = Math.max(420, height - 64 - 64 - profile.cardGap * 2 - 42);
   const cardWidth = clamp(Math.min(width - profile.pagePad * 2, profile.maxContentWidth), 280, 560);
   const cardHeight = clamp(viewportSafeHeight, 480, 760);
@@ -131,8 +145,14 @@ export function FeedScreen({ theme }) {
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 8 || Math.abs(gesture.dx) > 8,
+        onStartShouldSetPanResponder: () => false,
+        onStartShouldSetPanResponderCapture: () => false,
+        onMoveShouldSetPanResponder: (_, gesture) => {
+          if (linkPressRef.current) return false;
+          return Math.abs(gesture.dy) > 12 || Math.abs(gesture.dx) > 12;
+        },
         onPanResponderMove: (_, gesture) => {
+          if (linkPressRef.current) return;
           panX.setValue(gesture.dx);
           panY.setValue(gesture.dy);
         },
@@ -247,7 +267,7 @@ export function FeedScreen({ theme }) {
   if (loading) {
     return (
       <View style={[styles.feedRoot, { backgroundColor: theme.bg, justifyContent: "center", alignItems: "center" }]}>
-        <Text style={[styles.meta, { color: theme.textMuted }]}>Loading backend news...</Text>
+        <Text style={[styles.meta, { color: theme.textMuted }]}>Loading...</Text>
       </View>
     );
   }
@@ -265,11 +285,7 @@ export function FeedScreen({ theme }) {
 
   return (
     <View style={[styles.feedRoot, { backgroundColor: theme.bg }]}>
-      <View style={[styles.backendBar, { borderBottomColor: theme.border, backgroundColor: theme.surface }]}> 
-        <Text style={[styles.meta, { color: theme.textMuted }]}>Live API • {articleItems.length} Articles {lastUpdated ? `• Updated ${lastUpdated}` : ""}</Text>
-        <Pressable onPress={loadArticles}><Text style={[styles.label, { color: theme.primary }]}>Refresh</Text></Pressable>
-      </View>
-      <View style={styles.pageWrap} {...panResponder.panHandlers}>
+      <View style={styles.pageWrap} {...(isWeb ? {} : panResponder.panHandlers)}>
         <Animated.View
           style={[
             styles.worldCard,
@@ -298,9 +314,28 @@ export function FeedScreen({ theme }) {
 
             <View style={styles.worldFooter}>
               <Text style={[styles.meta, { color: theme.textMuted, fontSize: typeScale.meta }]}>{activeItem.source} • {activeItem.publishedAt}</Text>
-              <Pressable onPress={() => openArticle(activeItem.url)}>
-                <Text style={[styles.readLink, { color: theme.primary, fontSize: typeScale.body }]}>Read full article</Text>
-              </Pressable>
+              {isWeb ? (
+                <Text
+                  href={normalizeUrl(templateArticleUrl)}
+                  hrefAttrs={{ target: "_blank", rel: "noopener noreferrer" }}
+                  style={[styles.readLink, { color: theme.primary, fontSize: typeScale.body }]}
+                >
+                  Read this article
+                </Text>
+              ) : (
+                <Pressable
+                  onStartShouldSetResponder={() => true}
+                  onPressIn={() => {
+                    linkPressRef.current = true;
+                  }}
+                  onPressOut={() => {
+                    linkPressRef.current = false;
+                  }}
+                  onPress={() => openArticle(templateArticleUrl)}
+                >
+                  <Text style={[styles.readLink, { color: theme.primary, fontSize: typeScale.body }]}>Read this article</Text>
+                </Pressable>
+              )}
             </View>
           </View>
         </Animated.View>
@@ -348,7 +383,7 @@ export function CategoriesScreen({ theme }) {
       <SectionTitle
         theme={theme}
         title="Global News Topics"
-        subtitle={loading ? "Syncing from live API..." : "Categories generated from live API articles."}
+        subtitle=""
         titleStyle={{ fontSize: typeScale.sectionTitle, lineHeight: typeScale.sectionTitle + 6 }}
         subtitleStyle={{ fontSize: typeScale.sectionSubtitle, lineHeight: typeScale.sectionSubtitle + 8 }}
       />
@@ -619,14 +654,6 @@ const styles = StyleSheet.create({
   worldFooter: {
     minHeight: 54,
     justifyContent: "flex-end"
-  },
-  backendBar: {
-    height: 42,
-    borderBottomWidth: 1,
-    paddingHorizontal: spacing.container,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between"
   },
   refreshBtn: {
     borderWidth: 1,
