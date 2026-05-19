@@ -58,6 +58,7 @@ const getTypeScale = (profileKey) => {
 
 export function FeedScreen({ theme }) {
   const isWeb = typeof window !== "undefined";
+  const isTouchWeb = isWeb && typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
   const { width, height } = useWindowDimensions();
   const profile = getScreenProfile(width, height);
   const typeScale = getTypeScale(profile.key);
@@ -280,7 +281,7 @@ export function FeedScreen({ theme }) {
 
   return (
     <View style={[styles.feedRoot, { backgroundColor: theme.bg }]}>
-      <View style={styles.pageWrap} {...(isWeb ? {} : panResponder.panHandlers)}>
+      <View style={styles.pageWrap} {...(isWeb && !isTouchWeb ? {} : panResponder.panHandlers)}>
         <Animated.View
           style={[
             styles.worldCard,
