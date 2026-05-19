@@ -18,6 +18,12 @@ import { SectionTitle } from "../components/Shell";
 import { fetchBackendNewsFeed } from "../config/api";
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+const normalizeUrl = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `https://${raw}`;
+};
 
 const getScreenProfile = (width, height) => {
   const shortest = Math.min(width, height);
@@ -55,7 +61,7 @@ export function FeedScreen({ theme }) {
   const [index, setIndex] = useState(0);
   const [articleItems, setArticleItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [backendError, setBackendError] = useState("");
+  const [apiError, setApiError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
   const wheelLockRef = useRef(0);
   const panX = useRef(new Animated.Value(0)).current;
@@ -66,7 +72,7 @@ export function FeedScreen({ theme }) {
 
   const loadArticles = async () => {
     setLoading(true);
-    setBackendError("");
+    setApiError("");
     try {
       const data = await fetchBackendNewsFeed();
       if (Array.isArray(data) && data.length > 0) {
@@ -77,16 +83,32 @@ export function FeedScreen({ theme }) {
         setArticleItems(worldNewsToday);
         setIndex(0);
         setLastUpdated("Template mode");
-        setBackendError("Backend connected, but no articles found. Showing template articles.");
+        setApiError("Live API connected, but no articles found. Showing template articles.");
       }
     } catch (_err) {
       setArticleItems(worldNewsToday);
       setIndex(0);
       setLastUpdated("Template mode");
-      setBackendError("Backend connection failed. Showing template articles.");
+      setApiError("Live API connection failed. Showing template articles.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const openArticle = (value) => {
+    const safeUrl = normalizeUrl(value);
+    if (!safeUrl) return;
+    if (typeof window !== "undefined") {
+      const anchor = document.createElement("a");
+      anchor.href = safeUrl;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      return;
+    }
+    Linking.openURL(safeUrl);
   };
 
   useEffect(() => {
@@ -239,9 +261,9 @@ export function FeedScreen({ theme }) {
   if (!activeItem) {
     return (
       <View style={[styles.feedRoot, { backgroundColor: theme.bg, justifyContent: "center", alignItems: "center", padding: spacing.lg }]}>
-        <Text style={[styles.body, { color: theme.text, textAlign: "center" }]}>{backendError || "No data available."}</Text>
+        <Text style={[styles.body, { color: theme.text, textAlign: "center" }]}>{apiError || "No data available."}</Text>
         <Pressable style={[styles.refreshBtn, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]} onPress={loadArticles}>
-          <Text style={[styles.label, { color: theme.primary }]}>Retry backend sync</Text>
+          <Text style={[styles.label, { color: theme.primary }]}>Retry live API sync</Text>
         </Pressable>
       </View>
     );
@@ -250,7 +272,7 @@ export function FeedScreen({ theme }) {
   return (
     <View style={[styles.feedRoot, { backgroundColor: theme.bg }]}>
       <View style={[styles.backendBar, { borderBottomColor: theme.border, backgroundColor: theme.surface }]}> 
-        <Text style={[styles.meta, { color: theme.textMuted }]}>Live Backend • {articleItems.length} Articles {lastUpdated ? `• Updated ${lastUpdated}` : ""}</Text>
+        <Text style={[styles.meta, { color: theme.textMuted }]}>Live API • {articleItems.length} Articles {lastUpdated ? `• Updated ${lastUpdated}` : ""}</Text>
         <Pressable onPress={loadArticles}><Text style={[styles.label, { color: theme.primary }]}>Refresh</Text></Pressable>
       </View>
       <View style={styles.pageWrap} {...panResponder.panHandlers}>
@@ -282,7 +304,7 @@ export function FeedScreen({ theme }) {
 
             <View style={styles.worldFooter}>
               <Text style={[styles.meta, { color: theme.textMuted, fontSize: typeScale.meta }]}>{activeItem.source} • {activeItem.publishedAt}</Text>
-              <Pressable onPress={() => Linking.openURL(activeItem.url)}>
+              <Pressable onPress={() => openArticle(activeItem.url)}>
                 <Text style={[styles.readLink, { color: theme.primary, fontSize: typeScale.body }]}>Read full article</Text>
               </Pressable>
             </View>
@@ -332,7 +354,7 @@ export function CategoriesScreen({ theme }) {
       <SectionTitle
         theme={theme}
         title="Global News Topics"
-        subtitle={loading ? "Syncing from backend..." : "Categories generated from backend articles."}
+        subtitle={loading ? "Syncing from live API..." : "Categories generated from live API articles."}
         titleStyle={{ fontSize: typeScale.sectionTitle, lineHeight: typeScale.sectionTitle + 6 }}
         subtitleStyle={{ fontSize: typeScale.sectionSubtitle, lineHeight: typeScale.sectionSubtitle + 8 }}
       />
@@ -379,7 +401,7 @@ export function SearchScreen({ theme }) {
       <SectionTitle
         theme={theme}
         title="Search"
-        subtitle="Find news, topics, and regions from backend data."
+        subtitle="Find news, topics, and regions from live API data."
         titleStyle={{ fontSize: typeScale.sectionTitle, lineHeight: typeScale.sectionTitle + 6 }}
         subtitleStyle={{ fontSize: typeScale.sectionSubtitle, lineHeight: typeScale.sectionSubtitle + 8 }}
       />
