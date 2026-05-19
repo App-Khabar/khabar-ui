@@ -99,13 +99,7 @@ export function FeedScreen({ theme }) {
     const safeUrl = normalizeUrl(value);
     if (!safeUrl) return;
     if (typeof window !== "undefined") {
-      const anchor = document.createElement("a");
-      anchor.href = safeUrl;
-      anchor.target = "_blank";
-      anchor.rel = "noopener noreferrer";
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
+      window.location.assign(safeUrl);
       return;
     }
     Linking.openURL(safeUrl);
