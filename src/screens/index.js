@@ -67,7 +67,6 @@ export function FeedScreen({ theme }) {
   const [apiError, setApiError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
   const wheelLockRef = useRef(0);
-  const linkPressRef = useRef(false);
   const panX = useRef(new Animated.Value(0)).current;
   const panY = useRef(new Animated.Value(0)).current;
 
@@ -147,12 +146,8 @@ export function FeedScreen({ theme }) {
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onStartShouldSetPanResponderCapture: () => false,
-        onMoveShouldSetPanResponder: (_, gesture) => {
-          if (linkPressRef.current) return false;
-          return Math.abs(gesture.dy) > 12 || Math.abs(gesture.dx) > 12;
-        },
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 8 || Math.abs(gesture.dx) > 8,
         onPanResponderMove: (_, gesture) => {
-          if (linkPressRef.current) return;
           panX.setValue(gesture.dx);
           panY.setValue(gesture.dy);
         },
@@ -324,13 +319,6 @@ export function FeedScreen({ theme }) {
                 </Text>
               ) : (
                 <Pressable
-                  onStartShouldSetResponder={() => true}
-                  onPressIn={() => {
-                    linkPressRef.current = true;
-                  }}
-                  onPressOut={() => {
-                    linkPressRef.current = false;
-                  }}
                   onPress={() => openArticle(templateArticleUrl)}
                 >
                   <Text style={[styles.readLink, { color: theme.primary, fontSize: typeScale.body }]}>Read this article</Text>
