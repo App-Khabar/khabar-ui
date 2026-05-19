@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { SafeAreaView, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { BottomNav, TopBar } from "./src/components/Shell";
@@ -16,6 +16,21 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(false);
 
   const theme = useMemo(() => (darkMode ? themes.dark : themes.light), [darkMode]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const prevent = (event) => event.preventDefault();
+    document.addEventListener("copy", prevent);
+    document.addEventListener("cut", prevent);
+    document.addEventListener("selectstart", prevent);
+    document.addEventListener("contextmenu", prevent);
+    return () => {
+      document.removeEventListener("copy", prevent);
+      document.removeEventListener("cut", prevent);
+      document.removeEventListener("selectstart", prevent);
+      document.removeEventListener("contextmenu", prevent);
+    };
+  }, []);
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]}> 
