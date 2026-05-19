@@ -10,8 +10,7 @@
       "web"
     ],
     "web": {
-      "bundler": "metro",
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro"
     },
     "plugins": [
       "expo-asset"
